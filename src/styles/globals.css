@@ -104,7 +104,7 @@ body {
   font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   font-size: 13.5px;
   line-height: 1.5;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
   color: var(--text-1);
   background: var(--bg);
@@ -115,12 +115,12 @@ body {
 }
 
 h1, h2, h3 {
-  letter-spacing: -0.022em;
+  letter-spacing: 0;
   font-weight: 600;
 }
 
 button {
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 
 /* Detached window: flexible, larger. */
@@ -179,7 +179,7 @@ input, textarea, select {
   border-radius: 8px;
   font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   transition: background var(--transition), border-color var(--transition), box-shadow var(--transition), transform 80ms ease;
   white-space: nowrap;
   user-select: none;
@@ -241,6 +241,27 @@ input, textarea, select {
   color: var(--text-1);
 }
 
+/* Linear-style "soft" button: subtle filled with hairline border. */
+.btn--soft {
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-color: var(--border);
+}
+.btn--soft:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+/* Danger ghost: red text only, no background — confirms a destructive action. */
+.btn--danger-ghost {
+  background: transparent;
+  color: var(--color-danger);
+}
+.btn--danger-ghost:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 .btn__suffix {
   opacity: 0.85;
   font-weight: 500;
@@ -270,12 +291,12 @@ input, textarea, select {
   font-weight: 600;
   color: var(--text-2);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 .form-label .form-input {
   margin-top: 6px;
   text-transform: none;
-  letter-spacing: normal;
+  letter-spacing: 0;
   font-weight: 400;
   color: var(--text-1);
 }
@@ -293,7 +314,7 @@ input, textarea, select {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   margin-bottom: 8px;
 }
 .form-section__title--reasonable { color: var(--color-success); }
@@ -373,7 +394,7 @@ input, textarea, select {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 .badge--priority-low { background: #e0e7ff; color: #4338ca; }
 .badge--priority-medium { background: #fef3c7; color: #b45309; }
@@ -408,4 +429,112 @@ input, textarea, select {
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.03); }
+}
+
+/* =========================================================
+   Claude Design import — Linear-grade tokens and controls
+   Source: FocusSand - Popup.html / styles/tokens.css
+   ========================================================= */
+
+:root {
+  --violet-500: #8b5cf6;
+  --brand-400: #818cf8;
+  --brand-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --brand-grad-soft: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+  --success-fg: #059669;
+  --warning-fg: #d97706;
+  --danger-fg: #dc2626;
+  --brand-tint: #eef0fe;
+  --brand-tint-2: #e5e7fd;
+  --success-tint: #e7f8f1;
+  --warning-tint: #fdf3e2;
+  --danger-tint: #fdecec;
+  --line: #ececea;
+  --line-strong: #e0e0dd;
+  --hairline: rgba(15, 16, 25, 0.07);
+  --shadow-pop: 0 8px 16px rgba(15, 16, 25, 0.06), 0 24px 56px rgba(15, 16, 25, 0.16);
+  --ring: 0 0 0 3.5px var(--brand-tint-2);
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-tight: 0;
+  --tracking-tighter: 0;
+  --tracking-label: 0;
+  --popup-width: 380px;
+  --popup-min-height: 600px;
+}
+
+[data-theme="dark"] {
+  --violet-500: #a78bfa;
+  --brand-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --brand-tint: #1c1d35;
+  --brand-tint-2: #262747;
+  --success-tint: #10261f;
+  --warning-tint: #2a2113;
+  --danger-tint: #2a1718;
+  --success-fg: #34d399;
+  --warning-fg: #fbbf24;
+  --danger-fg: #f87171;
+  --line: #24263a;
+  --line-strong: #2e3148;
+  --hairline: rgba(255, 255, 255, 0.06);
+  --shadow-pop: 0 10px 24px rgba(0, 0, 0, 0.55), 0 30px 70px rgba(0, 0, 0, 0.65);
+  --ring: 0 0 0 3.5px var(--brand-tint-2);
+}
+
+.btn {
+  border-radius: 10px;
+  font-weight: 650;
+  transition:
+    transform 120ms var(--ease),
+    background 150ms ease,
+    box-shadow 150ms ease,
+    border-color 150ms ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+
+.btn--primary {
+  background: var(--brand-grad);
+  color: #ffffff;
+  box-shadow:
+    0 2px 8px rgba(99, 102, 241, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn--primary:hover:not(:disabled) {
+  box-shadow:
+    0 4px 14px rgba(99, 102, 241, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.btn--secondary,
+.btn--soft {
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-color: var(--border);
+}
+
+.btn--success {
+  background: var(--color-success);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+}
+
+.btn--danger-ghost {
+  background: transparent;
+  color: var(--danger-fg);
+}
+
+.btn--danger-ghost:hover:not(:disabled) {
+  background: var(--danger-tint);
+}
+
+.form-input:focus,
+.task-form__input:focus,
+.task-form__textarea:focus,
+.task-form__select:focus {
+  border-color: var(--brand-400);
+  box-shadow: var(--ring);
 }

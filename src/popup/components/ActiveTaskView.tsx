@@ -2,6 +2,7 @@ import type { Task } from '@/models/task';
 import { totalEstimatedSeconds } from '@/models/task';
 import type { ActiveTimerState } from '@/models/timer';
 import type { SandPack, TimerStyle } from '@/models/settings';
+import { formatDuration } from '@/utils/time';
 import { CircularTimer } from './CircularTimer';
 import { Hourglass } from './Hourglass';
 
@@ -29,11 +30,15 @@ export function ActiveTaskView({
   onAbandon,
 }: Props) {
   const estimated = totalEstimatedSeconds(task);
+  const safeEstimated = Math.max(1, estimated);
+  const remainingSeconds = estimated - elapsedSeconds;
+  const over = remainingSeconds < 0;
+  const progress = Math.min(100, Math.max(0, Math.round((elapsedSeconds / safeEstimated) * 100)));
 
   return (
     <section className="active-task" aria-live="polite">
       <div className="active-task__header">
-        <span className="active-task__chip">Tâche en cours</span>
+        <span className="active-task__chip">● Tâche en cours</span>
         <h2 className="active-task__title">{task.title}</h2>
         {task.description && (
           <p className="active-task__desc">{task.description}</p>
@@ -55,14 +60,21 @@ export function ActiveTaskView({
         />
       )}
 
+      {style === 'hourglass' && (
+        <div className="active-task__readout">
+          <strong>{over ? `+${formatDuration(-remainingSeconds)}` : formatDuration(remainingSeconds)}</strong>
+          <span className={over ? 'is-over' : ''}>{over ? 'Temps dépassé' : `${progress}% écoulé`}</span>
+        </div>
+      )}
+
       <div className="active-task__actions">
         {timer.isPaused ? (
-          <button className="btn btn--primary" onClick={onResume}>Reprendre</button>
+          <button className="btn btn--soft" onClick={onResume}>Reprendre</button>
         ) : (
-          <button className="btn btn--secondary" onClick={onPause}>Pause</button>
+          <button className="btn btn--soft" onClick={onPause}>Pause</button>
         )}
         <button className="btn btn--success" onClick={onComplete}>Terminer</button>
-        <button className="btn btn--ghost" onClick={onAbandon}>Abandonner</button>
+        <button className="btn btn--danger-ghost" onClick={onAbandon}>Abandonner</button>
       </div>
 
       {task.extensions.length > 0 && (

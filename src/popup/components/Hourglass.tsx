@@ -10,103 +10,128 @@ interface Props {
 }
 
 /**
- * Hourglass V2 with sand packs, 3D tilt, and sound-reactive tremor.
+ * Hourglass V3 — pure canvas, ported from Claude Design's prototype.
  *
- *  - SVG holds the static glass + wooden frame (sharp at any DPR).
- *  - Canvas hosts the sand: top fill, falling grains, splashes, sparkles,
- *    and a curved pile surface. Re-renders at 60 fps.
- *  - A wrapping div applies a permanent 3D tilt and briefly shakes on
- *    sound events.
- *
- * Geometry: 220 × 280 units (canvas + SVG share the system).
- *  · Top wooden cap:    y=0..22
- *  · Top chamber:       y=22..128 (200 → 0 wide)
- *  · Neck:              y=128..152 (width 14)
- *  · Bottom chamber:    y=152..258 (0 → 200 wide)
- *  · Bottom wooden cap: y=258..280
+ *  - Chamber walls are quadratic/Bezier curves that bulge outward like
+ *    real blown glass.
+ *  - Halo radial gradient sits behind the glass (pack-tinted).
+ *  - Specular streak slides slowly across the body for a "polished glass"
+ *    feeling.
+ *  - Sand surface in the top chamber is concave (funnels into the neck);
+ *    pile in the bottom chamber is a bombé dome.
+ *  - Grains fall with gravity; each impact spawns a half-arc splash.
+ *  - "Shiftable" packs (classic / gold) automatically warm toward orange,
+ *    then red, as remaining time drops below 50 % then 18 %.
+ *  - Sound-reactive tremor: 260 ms shake on each `focusand:sound` event
+ *    (silent for the "click" type to avoid noise).
  */
-
-const W = 220;
-const H = 280;
-const CX = W / 2;
-const TOP_Y = 22;
-const TOP_BOT_Y = 128;
-const NECK_TOP_Y = 128;
-const NECK_BOT_Y = 152;
-const BOT_TOP_Y = 152;
-const BOT_BOT_Y = 258;
-const TOP_HALF_W = 100;
-const BOT_HALF_W = 100;
-const CHAMBER_H = 106;
-const GRAIN_SPAWN_X = CX;
-const GRAIN_SPAWN_Y = NECK_TOP_Y + 2;
-const GRAVITY = 380;
-const SPAWN_INTERVAL_MS = 90;
 
 interface Grain {
   x: number;
   y: number;
-  vx: number;
   vy: number;
   r: number;
-  shade: number;
 }
 
-interface Ripple {
+interface Splash {
   x: number;
   y: number;
-  age: number;
-  life: number;
+  r: number;
+  a: number;
 }
 
 interface Sparkle {
-  x: number;
-  y: number;
-  age: number;
-  life: number;
-}
-
-interface AnimState {
-  grains: Grain[];
-  ripples: Ripple[];
-  sparkles: Sparkle[];
-  lastSpawn: number;
-  lastSparkle: number;
-  lastFrame: number;
+  x: number; // 0..1
+  y: number; // 0..1
+  ph: number;
 }
 
 interface PropsSnapshot {
-  elapsedSeconds: number;
-  estimatedSeconds: number;
-  paused: boolean;
-  sandPack: SandPack;
+  progress: number;
+  remaining: number;
+  running: boolean;
+  pack: SandPack;
+}
+
+interface Pack {
+  hi: string;
+  lo: string;
+  grain: string;
+  glow: string;
+  shiftable?: boolean;
+  emissive?: boolean;
+}
+
+const PACKS: Record<SandPack, Pack> = {
+  classic: { hi: '#f6c563', lo: '#e08a2a', grain: '#f3b24d', glow: 'rgba(240,168,48,.45)', shiftable: true },
+  lava:    { hi: '#ff8a3d', lo: '#d62828', grain: '#ff6b35', glow: 'rgba(255,90,40,.55)',  emissive: true },
+  glacier: { hi: '#dff1fb', lo: '#9bc7e6', grain: '#c4e4f5', glow: 'rgba(150,200,235,.5)' },
+  emerald: { hi: '#6ee7b7', lo: '#0f9d6b', grain: '#34d399', glow: 'rgba(52,211,153,.5)' },
+  gold:    { hi: '#ffe9a8', lo: '#cda03a', grain: '#ecc758', glow: 'rgba(230,196,80,.55)', emissive: true, shiftable: true },
+};
+
+// Re-exported for the SettingsDialog sand-pack picker.
+export const SAND_PACK_LABELS: Record<SandPack, { label: string; sample: string }> = {
+  classic: { label: 'Classique', sample: PACKS.classic.grain },
+  lava:    { label: 'Lave',      sample: PACKS.lava.grain },
+  glacier: { label: 'Glacier',   sample: PACKS.glacier.grain },
+  emerald: { label: 'Émeraude',  sample: PACKS.emerald.grain },
+  gold:    { label: 'Or',        sample: PACKS.gold.grain },
+};
+
+const CANVAS_W = 188;
+const CANVAS_H = 204;
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+function hexToRgb(h: string): [number, number, number] {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function mixHex(h1: string, h2: string, t: number): string {
+  const a = hexToRgb(h1);
+  const b = hexToRgb(h2);
+  return `rgb(${Math.round(lerp(a[0], b[0], t))},${Math.round(lerp(a[1], b[1], t))},${Math.round(lerp(a[2], b[2], t))})`;
 }
 
 export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sandPack = 'classic' }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const propsRef = useRef<PropsSnapshot>({ elapsedSeconds, estimatedSeconds, paused, sandPack });
-  const stateRef = useRef<AnimState>({
-    grains: [],
-    ripples: [],
-    sparkles: [],
-    lastSpawn: 0,
-    lastSparkle: 0,
-    lastFrame: 0,
-  });
   const rafRef = useRef<number>(0);
+  const grainsRef = useRef<Grain[]>([]);
+  const splashesRef = useRef<Splash[]>([]);
+  const sparklesRef = useRef<Sparkle[]>([]);
+  const spawnAccRef = useRef<number>(0);
+  const lastFrameRef = useRef<number>(performance.now());
+  const shakeUntilRef = useRef<number>(0);
+  const propsRef = useRef<PropsSnapshot>({
+    progress: 0,
+    remaining: 1,
+    running: !paused,
+    pack: sandPack,
+  });
 
   const [isShaking, setIsShaking] = useState(false);
 
+  // Sync prop snapshot every render.
   useEffect(() => {
-    propsRef.current = { elapsedSeconds, estimatedSeconds, paused, sandPack };
+    const safeEst = Math.max(1, estimatedSeconds);
+    const rawProgress = elapsedSeconds / safeEst;
+    propsRef.current = {
+      progress: Math.max(0, Math.min(1, rawProgress)),
+      remaining: Math.max(0, Math.min(1, 1 - rawProgress)),
+      running: !paused,
+      pack: sandPack,
+    };
   }, [elapsedSeconds, estimatedSeconds, paused, sandPack]);
 
-  // Sound-reactive tremor.
+  // Sound-reactive shake — same hook as before.
   useEffect(() => {
     let timeoutId: number | undefined;
     const handler = (e: Event) => {
       const ce = e as CustomEvent<{ name: string }>;
       if (!ce.detail || ce.detail.name === 'click') return;
+      shakeUntilRef.current = performance.now() + 260;
       setIsShaking(true);
       window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(() => setIsShaking(false), 260);
@@ -124,49 +149,50 @@ export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sa
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width = `${W}px`;
-    canvas.style.height = `${H}px`;
-    ctx.scale(dpr, dpr);
-
-    stateRef.current.lastFrame = performance.now();
-
-    const loop = (time: number) => {
-      const state = stateRef.current;
-      const dt = Math.min(50, time - state.lastFrame) / 1000;
-      state.lastFrame = time;
-
-      const { elapsedSeconds, estimatedSeconds, paused, sandPack } = propsRef.current;
-      const safeEst = Math.max(1, estimatedSeconds);
-      const rawProgress = elapsedSeconds / safeEst;
-      const progress = Math.min(1, rawProgress);
-      const overrun = rawProgress > 1;
-      const remainingRatio = 1 - progress;
-
-      const tone: Tone = overrun ? 'red' : remainingRatio <= 0.25 ? 'orange' : 'amber';
-      const palette = SAND_PACKS[sandPack][tone];
-
-      ctx.clearRect(0, 0, W, H);
-
-      drawTopFill(ctx, progress, palette);
-      drawPile(ctx, progress, palette);
-
-      if (!paused && progress > 0 && progress < 1) {
-        spawnGrains(state, time);
+    // Seed sparkles once.
+    if (sparklesRef.current.length === 0) {
+      for (let i = 0; i < 7; i++) {
+        sparklesRef.current.push({
+          x: Math.random(),
+          y: Math.random(),
+          ph: Math.random() * Math.PI * 2,
+        });
       }
-      updateGrains(state, dt, progress);
-      drawGrains(ctx, state.grains, palette);
+    }
 
-      updateRipples(state, dt);
-      drawRipples(ctx, state.ripples, palette);
-
-      if (!paused && progress > 0 && progress < 1) {
-        spawnSparkles(state, time, progress);
+    const sizeCanvas = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
       }
-      updateSparkles(state, dt);
-      drawSparkles(ctx, state.sparkles);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { w, h };
+    };
+
+    lastFrameRef.current = performance.now();
+
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - lastFrameRef.current) / 1000);
+      lastFrameRef.current = now;
+
+      const { w, h } = sizeCanvas();
+      ctx.clearRect(0, 0, w, h);
+
+      // Apply shake offset (synced with React state via shakeUntilRef).
+      let sx = 0;
+      let sy = 0;
+      if (now < shakeUntilRef.current) {
+        const k = (shakeUntilRef.current - now) / 260;
+        sx = Math.sin(now / 16) * 3 * k;
+        sy = Math.cos(now / 13) * 2 * k;
+      }
+      ctx.save();
+      ctx.translate(sx, sy);
+      renderGlass(ctx, w, h, propsRef.current, now, dt, grainsRef.current, splashesRef.current, sparklesRef.current, spawnAccRef);
+      ctx.restore();
 
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -179,88 +205,26 @@ export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sa
   const rawProgress = elapsedSeconds / safeEstimated;
   const overrun = rawProgress > 1;
   const remainingRatio = 1 - Math.min(1, rawProgress);
-  const tone: Tone = overrun ? 'red' : remainingRatio <= 0.25 ? 'orange' : 'amber';
+  const tone: 'amber' | 'orange' | 'red' = overrun
+    ? 'red'
+    : remainingRatio <= 0.25
+      ? 'orange'
+      : 'amber';
   const remainingDisplay = overrun ? -(elapsedSeconds - safeEstimated) : safeEstimated - elapsedSeconds;
   const percent = Math.round(rawProgress * 100);
 
   return (
-    <div className={`hourglass tone-${tone} ${paused ? 'is-paused' : ''} ${overrun ? 'is-overrun' : ''}`}>
-      <div className="hourglass__stage">
-        <div className={`hourglass__tilt ${isShaking ? 'is-shaking' : ''}`}>
-          <svg
-            className="hourglass__frame"
-            viewBox={`0 0 ${W} ${H}`}
-            width={W}
-            height={H}
-            aria-hidden
-          >
-            <defs>
-              <linearGradient id="hg-glass" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="rgba(99, 102, 241, 0.10)" />
-                <stop offset="100%" stopColor="rgba(139, 92, 246, 0.04)" />
-              </linearGradient>
-              <linearGradient id="hg-frame" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#8b6f47" />
-                <stop offset="50%" stopColor="#a07b52" />
-                <stop offset="100%" stopColor="#6b5236" />
-              </linearGradient>
-              <linearGradient id="hg-frame-shine" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
-                <stop offset="40%" stopColor="rgba(255,255,255,0)" />
-              </linearGradient>
-            </defs>
-
-            <rect x={5} y={0} width={W - 10} height={22} rx={5} fill="url(#hg-frame)" />
-            <rect x={5} y={0} width={W - 10} height={22} rx={5} fill="url(#hg-frame-shine)" />
-
-            <polygon
-              points={`${CX - TOP_HALF_W},${TOP_Y} ${CX + TOP_HALF_W},${TOP_Y} ${CX + 3},${TOP_BOT_Y} ${CX - 3},${TOP_BOT_Y}`}
-              fill="url(#hg-glass)"
-              stroke="rgba(99, 102, 241, 0.32)"
-              strokeWidth={1.4}
-              strokeLinejoin="round"
-            />
-
-            <polygon
-              points={`${CX - TOP_HALF_W + 8},${TOP_Y + 3} ${CX - TOP_HALF_W + 24},${TOP_Y + 3} ${CX - 2},${TOP_BOT_Y - 4} ${CX - 8},${TOP_BOT_Y - 4}`}
-              fill="rgba(255,255,255,0.18)"
-            />
-
-            <rect
-              x={CX - 7}
-              y={NECK_TOP_Y}
-              width={14}
-              height={NECK_BOT_Y - NECK_TOP_Y}
-              fill="url(#hg-glass)"
-              stroke="rgba(99, 102, 241, 0.32)"
-              strokeWidth={1.4}
-            />
-
-            <polygon
-              points={`${CX - 3},${BOT_TOP_Y} ${CX + 3},${BOT_TOP_Y} ${CX + BOT_HALF_W},${BOT_BOT_Y} ${CX - BOT_HALF_W},${BOT_BOT_Y}`}
-              fill="url(#hg-glass)"
-              stroke="rgba(99, 102, 241, 0.32)"
-              strokeWidth={1.4}
-              strokeLinejoin="round"
-            />
-
-            <polygon
-              points={`${CX - 3},${BOT_TOP_Y + 4} ${CX + 3},${BOT_TOP_Y + 4} ${CX - BOT_HALF_W + 24},${BOT_BOT_Y - 3} ${CX - BOT_HALF_W + 8},${BOT_BOT_Y - 3}`}
-              fill="rgba(255,255,255,0.16)"
-            />
-
-            <rect x={5} y={258} width={W - 10} height={22} rx={5} fill="url(#hg-frame)" />
-            <rect x={5} y={272} width={W - 10} height={6} fill="rgba(0,0,0,0.22)" />
-          </svg>
-
-          <canvas ref={canvasRef} className="hourglass__canvas" />
-        </div>
-      </div>
-
+    <div className={`hourglass tone-${tone} ${paused ? 'is-paused' : ''} ${overrun ? 'is-overrun' : ''} ${isShaking ? 'is-shaking' : ''}`}>
+      <canvas
+        ref={canvasRef}
+        className="hourglass__canvas"
+        style={{ width: `${CANVAS_W}px`, height: `${CANVAS_H}px` }}
+        aria-hidden
+      />
       <div className="hourglass__readout">
         <div className="hourglass__time">{formatDuration(remainingDisplay)}</div>
         <div className="hourglass__label">
-          {paused ? 'En pause' : overrun ? 'Temps dépassé' : `${percent}%`}
+          {paused ? 'En pause' : overrun ? 'Temps dépassé' : `${percent}% écoulé`}
         </div>
       </div>
     </div>
@@ -268,238 +232,284 @@ export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sa
 }
 
 // =====================================================================
-// Sand packs — palettes per state per pack
+// Canvas drawing
 // =====================================================================
 
-type Tone = 'amber' | 'orange' | 'red';
-
-interface Palette {
-  top: string;
-  bottom: string;
-  grain: string;
-  spark: string;
+interface Geometry {
+  cx: number;
+  top: number;
+  bot: number;
+  neck: number;
+  halfW: number;
+  neckW: number;
+  capH: number;
+  padX: number;
 }
 
-export const SAND_PACKS: Record<SandPack, Record<Tone, Palette>> = {
-  classic: {
-    amber:  { top: '#fbbf24', bottom: '#d97706', grain: '#f59e0b', spark: 'rgba(254, 240, 138, 0.9)' },
-    orange: { top: '#fb923c', bottom: '#ea580c', grain: '#f97316', spark: 'rgba(255, 215, 170, 0.9)' },
-    red:    { top: '#f87171', bottom: '#dc2626', grain: '#ef4444', spark: 'rgba(254, 202, 202, 0.9)' },
-  },
-  lava: {
-    amber:  { top: '#fb923c', bottom: '#7c2d12', grain: '#ea580c', spark: 'rgba(254, 215, 170, 0.95)' },
-    orange: { top: '#ef4444', bottom: '#7f1d1d', grain: '#dc2626', spark: 'rgba(254, 202, 202, 0.95)' },
-    red:    { top: '#dc2626', bottom: '#450a0a', grain: '#991b1b', spark: 'rgba(254, 220, 180, 0.95)' },
-  },
-  glacier: {
-    amber:  { top: '#7dd3fc', bottom: '#0369a1', grain: '#38bdf8', spark: 'rgba(220, 240, 255, 0.95)' },
-    orange: { top: '#5eead4', bottom: '#0e7490', grain: '#22d3ee', spark: 'rgba(220, 255, 250, 0.9)' },
-    red:    { top: '#a78bfa', bottom: '#4c1d95', grain: '#8b5cf6', spark: 'rgba(240, 230, 255, 0.9)' },
-  },
-  emerald: {
-    amber:  { top: '#86efac', bottom: '#15803d', grain: '#4ade80', spark: 'rgba(220, 255, 220, 0.9)' },
-    orange: { top: '#a3e635', bottom: '#4d7c0f', grain: '#84cc16', spark: 'rgba(245, 255, 220, 0.9)' },
-    red:    { top: '#fbbf24', bottom: '#92400e', grain: '#f59e0b', spark: 'rgba(254, 240, 138, 0.9)' },
-  },
-  gold: {
-    amber:  { top: '#fde047', bottom: '#a16207', grain: '#facc15', spark: 'rgba(255, 250, 200, 0.95)' },
-    orange: { top: '#fb923c', bottom: '#9a3412', grain: '#f97316', spark: 'rgba(255, 220, 170, 0.9)' },
-    red:    { top: '#dc2626', bottom: '#7f1d1d', grain: '#ef4444', spark: 'rgba(254, 202, 202, 0.9)' },
-  },
-};
-
-export const SAND_PACK_LABELS: Record<SandPack, { label: string; sample: string }> = {
-  classic: { label: 'Classique', sample: '#f59e0b' },
-  lava:    { label: 'Lave',      sample: '#dc2626' },
-  glacier: { label: 'Glacier',   sample: '#38bdf8' },
-  emerald: { label: 'Émeraude',  sample: '#4ade80' },
-  gold:    { label: 'Or',        sample: '#facc15' },
-};
-
-// =====================================================================
-// Canvas drawing helpers
-// =====================================================================
-
-function drawTopFill(ctx: CanvasRenderingContext2D, progress: number, palette: Palette): void {
-  const yLevel = TOP_Y + CHAMBER_H * (1 - progress);
-  if (yLevel >= TOP_BOT_Y - 0.5) return;
-
-  const widthAtLevel = (TOP_HALF_W * 2) * ((TOP_BOT_Y - yLevel) / CHAMBER_H);
-  const halfW = widthAtLevel / 2;
-
-  const gradient = ctx.createLinearGradient(0, TOP_Y, 0, TOP_BOT_Y);
-  gradient.addColorStop(0, palette.top);
-  gradient.addColorStop(1, palette.bottom);
-
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.moveTo(CX - TOP_HALF_W, TOP_Y);
-  ctx.lineTo(CX + TOP_HALF_W, TOP_Y);
-  ctx.lineTo(CX + halfW, yLevel + 1.5);
-  ctx.quadraticCurveTo(CX, yLevel - 1, CX - halfW, yLevel + 1.5);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(CX - halfW + 1, yLevel + 1);
-  ctx.quadraticCurveTo(CX, yLevel - 0.5, CX + halfW - 1, yLevel + 1);
-  ctx.stroke();
+function geo(w: number, h: number): Geometry {
+  const cx = w / 2;
+  const padX = w * 0.16;
+  const padY = h * 0.085;
+  const top = padY;
+  const bot = h - padY;
+  const neck = (top + bot) / 2;
+  const halfW = (w / 2) - padX;
+  const neckW = w * 0.030;
+  const capH = h * 0.045;
+  return { cx, top, bot, neck, halfW, neckW, capH, padX };
 }
 
-function drawPile(ctx: CanvasRenderingContext2D, progress: number, palette: Palette): void {
-  if (progress <= 0) return;
-
-  const yTop = BOT_BOT_Y - CHAMBER_H * progress;
-  const widthAtTop = (BOT_HALF_W * 2) * progress;
-  const halfW = widthAtTop / 2;
-
-  const gradient = ctx.createLinearGradient(0, yTop, 0, BOT_BOT_Y);
-  gradient.addColorStop(0, palette.top);
-  gradient.addColorStop(1, palette.bottom);
-  ctx.fillStyle = gradient;
-
+function chamberPath(ctx: CanvasRenderingContext2D, g: Geometry, dir: -1 | 1): void {
+  const { cx, neck, halfW, neckW } = g;
+  const edgeY = dir < 0 ? g.top + g.capH * 0.5 : g.bot - g.capH * 0.5;
+  const bulge = halfW * 0.18;
   ctx.beginPath();
-  ctx.moveTo(CX - BOT_HALF_W, BOT_BOT_Y);
-  ctx.lineTo(CX + BOT_HALF_W, BOT_BOT_Y);
-  ctx.lineTo(CX + halfW, yTop + 2);
-  const bumpHeight = Math.min(6, halfW * 0.18);
+  ctx.moveTo(cx - neckW, neck);
   ctx.bezierCurveTo(
-    CX + halfW * 0.5, yTop - bumpHeight,
-    CX - halfW * 0.5, yTop - bumpHeight,
-    CX - halfW, yTop + 2,
+    cx - neckW - bulge, neck + dir * (Math.abs(edgeY - neck) * 0.30),
+    cx - halfW + bulge * 0.4, edgeY - dir * (Math.abs(edgeY - neck) * 0.34),
+    cx - halfW, edgeY,
+  );
+  ctx.lineTo(cx + halfW, edgeY);
+  ctx.bezierCurveTo(
+    cx + halfW - bulge * 0.4, edgeY - dir * (Math.abs(edgeY - neck) * 0.34),
+    cx + neckW + bulge, neck + dir * (Math.abs(edgeY - neck) * 0.30),
+    cx + neckW, neck,
   );
   ctx.closePath();
-  ctx.fill();
+}
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-  ctx.lineWidth = 1;
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   ctx.beginPath();
-  ctx.moveTo(CX - halfW + 2, yTop + 2);
-  ctx.bezierCurveTo(
-    CX - halfW * 0.5, yTop - bumpHeight + 1,
-    CX + halfW * 0.5, yTop - bumpHeight + 1,
-    CX + halfW - 2, yTop + 2,
-  );
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawWood(ctx: CanvasRenderingContext2D, g: Geometry, y: number): void {
+  const x = g.cx - g.halfW - g.padX * 0.35;
+  const ww = (g.halfW + g.padX * 0.35) * 2;
+  const r = g.capH * 0.5;
+  const grad = ctx.createLinearGradient(0, y, 0, y + g.capH);
+  grad.addColorStop(0, '#a9824f');
+  grad.addColorStop(0.45, '#8a6437');
+  grad.addColorStop(1, '#6e4f2c');
+  ctx.fillStyle = grad;
+  roundRect(ctx, x, y, ww, g.capH, r);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  roundRect(ctx, x + 3, y + 2, ww - 6, g.capH * 0.28, r * 0.6);
+  ctx.fill();
+}
+
+function renderGlass(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  s: PropsSnapshot,
+  now: number,
+  dt: number,
+  grains: Grain[],
+  splashes: Splash[],
+  sparkles: Sparkle[],
+  spawnAccRef: { current: number },
+): void {
+  const g = geo(w, h);
+  const basePack = PACKS[s.pack] ?? PACKS.classic;
+  const progress = s.progress;
+  const remaining = s.remaining;
+
+  // Auto color shift for shiftable packs.
+  let hi = basePack.hi;
+  let lo = basePack.lo;
+  let grainCol = basePack.grain;
+  if (basePack.shiftable) {
+    if (remaining < 0.5) {
+      const t = 1 - remaining / 0.5;
+      hi = mixHex(basePack.hi, '#ff8a3d', t);
+      lo = mixHex(basePack.lo, '#cf3a1a', t);
+      grainCol = mixHex(basePack.grain, '#ff6b35', t);
+    }
+    if (remaining < 0.18) {
+      const t = 1 - remaining / 0.18;
+      hi = mixHex('#ff8a3d', '#ff5b5b', t);
+      lo = mixHex('#cf3a1a', '#c81e1e', t);
+      grainCol = mixHex('#ff6b35', '#ef4444', t);
+    }
+  }
+
+  // Halo behind the glass.
+  const halo = ctx.createRadialGradient(g.cx, h / 2, h * 0.05, g.cx, h / 2, h * 0.52);
+  halo.addColorStop(0, basePack.glow);
+  halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = basePack.emissive ? 0.9 : 0.55;
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalAlpha = 1;
+
+  // Glass body (translucent fill).
+  const bodyGrad = ctx.createLinearGradient(g.cx - g.halfW, 0, g.cx + g.halfW, 0);
+  bodyGrad.addColorStop(0, 'rgba(255,255,255,.55)');
+  bodyGrad.addColorStop(0.45, 'rgba(214,224,238,.18)');
+  bodyGrad.addColorStop(1, 'rgba(150,165,190,.22)');
+  ctx.save();
+  chamberPath(ctx, g, -1);
+  chamberPath(ctx, g, 1);
+  ctx.fillStyle = bodyGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // Top chamber sand (concave surface).
+  ctx.save();
+  chamberPath(ctx, g, -1);
+  ctx.clip();
+  const topH = Math.abs(g.neck - (g.top + g.capH * 0.5));
+  const surfY = (g.top + g.capH * 0.5) + topH * (1 - remaining) * 0.92;
+  const sg = ctx.createLinearGradient(0, surfY, 0, g.neck);
+  sg.addColorStop(0, hi);
+  sg.addColorStop(1, lo);
+  ctx.fillStyle = sg;
+  ctx.beginPath();
+  ctx.moveTo(g.cx - g.halfW, surfY + g.halfW * 0.10);
+  ctx.quadraticCurveTo(g.cx, surfY + g.halfW * 0.34, g.cx + g.halfW, surfY + g.halfW * 0.10);
+  ctx.lineTo(g.cx + g.neckW, g.neck);
+  ctx.lineTo(g.cx - g.neckW, g.neck);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(g.cx - g.halfW, surfY + g.halfW * 0.10);
+  ctx.quadraticCurveTo(g.cx, surfY + g.halfW * 0.34, g.cx + g.halfW, surfY + g.halfW * 0.10);
   ctx.stroke();
-}
+  // Sparkles in the top chamber.
+  if (remaining > 0.04) {
+    for (const sp of sparkles) {
+      const tw = 0.5 + 0.5 * Math.sin(now / 380 + sp.ph);
+      const px = g.cx + (sp.x - 0.5) * g.halfW * 1.4;
+      const py = lerp(surfY + 8, g.neck - 6, sp.y);
+      if (py > surfY + 4) {
+        ctx.globalAlpha = 0.15 + tw * 0.6;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(px, py, 0.9 + tw * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
 
-function spawnGrains(state: AnimState, time: number): void {
-  if (time - state.lastSpawn < SPAWN_INTERVAL_MS) return;
-  state.lastSpawn = time;
-  state.grains.push({
-    x: GRAIN_SPAWN_X + (Math.random() - 0.5) * 4,
-    y: GRAIN_SPAWN_Y,
-    vx: (Math.random() - 0.5) * 8,
-    vy: 30 + Math.random() * 30,
-    r: 1.2 + Math.random() * 0.9,
-    shade: Math.random(),
-  });
-}
+  // Bottom pile (bombé dome).
+  ctx.save();
+  chamberPath(ctx, g, 1);
+  ctx.clip();
+  const botH = Math.abs((g.bot - g.capH * 0.5) - g.neck);
+  const baseY = g.bot - g.capH * 0.5;
+  const pileH = botH * (0.18 + progress * 0.80);
+  const pileTop = baseY - pileH;
+  const pileGrad = ctx.createLinearGradient(0, pileTop, 0, baseY);
+  pileGrad.addColorStop(0, hi);
+  pileGrad.addColorStop(1, lo);
+  ctx.fillStyle = pileGrad;
+  ctx.beginPath();
+  ctx.moveTo(g.cx - g.halfW, baseY + 2);
+  ctx.lineTo(g.cx - g.halfW, pileTop + pileH * 0.4);
+  ctx.quadraticCurveTo(g.cx, pileTop - pileH * 0.25, g.cx + g.halfW, pileTop + pileH * 0.4);
+  ctx.lineTo(g.cx + g.halfW, baseY + 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.30)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(g.cx - g.halfW, pileTop + pileH * 0.4);
+  ctx.quadraticCurveTo(g.cx, pileTop - pileH * 0.25, g.cx + g.halfW, pileTop + pileH * 0.4);
+  ctx.stroke();
+  ctx.restore();
 
-function updateGrains(state: AnimState, dt: number, progress: number): void {
-  const yTop = BOT_BOT_Y - CHAMBER_H * progress;
-  const halfW = (BOT_HALF_W * 2) * progress / 2;
-  const bumpHeight = Math.min(6, halfW * 0.18);
-
-  const remaining: Grain[] = [];
-  for (const g of state.grains) {
-    g.vy += GRAVITY * dt;
-    g.x += g.vx * dt;
-    g.y += g.vy * dt;
-
-    const distFromCenter = Math.abs(g.x - CX) / Math.max(1, halfW);
-    const surfaceY = halfW > 1
-      ? yTop + 2 - bumpHeight * (1 - Math.min(1, distFromCenter)) * (1 - Math.min(1, distFromCenter))
-      : yTop + 2;
-
-    if (g.y >= surfaceY) {
-      state.ripples.push({
-        x: g.x,
-        y: surfaceY,
-        age: 0,
-        life: 320 + Math.random() * 120,
+  // Falling grain particles.
+  const empty = remaining <= 0.003;
+  if (s.running && !empty) {
+    spawnAccRef.current += dt * 120;
+    while (spawnAccRef.current > 1) {
+      spawnAccRef.current -= 1;
+      grains.push({
+        x: g.cx + (Math.random() - 0.5) * g.neckW * 1.1,
+        y: g.neck,
+        vy: 30 + Math.random() * 20,
+        r: 1.0 + Math.random() * 1.1,
       });
+    }
+  }
+  const pileSurfaceY = baseY - pileH;
+  ctx.fillStyle = grainCol;
+  for (let i = grains.length - 1; i >= 0; i--) {
+    const gr = grains[i];
+    gr.vy += 520 * dt;
+    gr.y += gr.vy * dt;
+    if (gr.y >= pileSurfaceY) {
+      splashes.push({ x: gr.x, y: pileSurfaceY, r: 1, a: 0.5 });
+      grains.splice(i, 1);
       continue;
     }
-    if (g.y > BOT_BOT_Y) continue;
-
-    if (g.y < NECK_BOT_Y) {
-      if (g.x < CX - 5) { g.x = CX - 5; g.vx = Math.abs(g.vx) * 0.4; }
-      if (g.x > CX + 5) { g.x = CX + 5; g.vx = -Math.abs(g.vx) * 0.4; }
-    }
-
-    remaining.push(g);
-  }
-  state.grains = remaining;
-}
-
-function drawGrains(ctx: CanvasRenderingContext2D, grains: readonly Grain[], palette: Palette): void {
-  ctx.fillStyle = palette.grain;
-  ctx.shadowColor = palette.grain;
-  ctx.shadowBlur = 4;
-  for (const g of grains) {
-    ctx.globalAlpha = 0.85 + g.shade * 0.15;
+    ctx.globalAlpha = 0.92;
     ctx.beginPath();
-    ctx.arc(g.x, g.y, g.r, 0, Math.PI * 2);
+    ctx.arc(gr.x, gr.y, gr.r, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
-}
 
-function updateRipples(state: AnimState, dt: number): void {
-  const dtMs = dt * 1000;
-  state.ripples = state.ripples.filter((r) => {
-    r.age += dtMs;
-    return r.age < r.life;
-  });
-}
-
-function drawRipples(ctx: CanvasRenderingContext2D, ripples: readonly Ripple[], palette: Palette): void {
-  ctx.strokeStyle = palette.spark;
-  for (const r of ripples) {
-    const t = r.age / r.life;
-    const radius = 1 + t * 5;
-    ctx.globalAlpha = (1 - t) * 0.55;
-    ctx.lineWidth = 1 - t * 0.7;
+  // Splash half-arcs at impact.
+  for (let i = splashes.length - 1; i >= 0; i--) {
+    const sp = splashes[i];
+    sp.r += 60 * dt;
+    sp.a -= 2.4 * dt;
+    if (sp.a <= 0) {
+      splashes.splice(i, 1);
+      continue;
+    }
+    ctx.globalAlpha = sp.a;
+    ctx.strokeStyle = grainCol;
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
-    ctx.arc(r.x, r.y, radius, 0, Math.PI, true);
+    ctx.arc(sp.x, sp.y, sp.r, Math.PI, 2 * Math.PI);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-}
 
-function spawnSparkles(state: AnimState, time: number, progress: number): void {
-  const remaining = 1 - progress;
-  if (remaining < 0.05) return;
-  if (time - state.lastSparkle < 350 + (1 - remaining) * 1200) return;
-  state.lastSparkle = time;
+  // Glass outline + specular streak (moves slowly).
+  ctx.save();
+  chamberPath(ctx, g, -1);
+  chamberPath(ctx, g, 1);
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = 'rgba(120,135,165,.5)';
+  ctx.stroke();
+  ctx.clip();
+  const shift = Math.sin(now / 2600) * w * 0.02;
+  const spec = ctx.createLinearGradient(g.cx - g.halfW * 0.7 + shift, 0, g.cx - g.halfW * 0.3 + shift, 0);
+  spec.addColorStop(0, 'rgba(255,255,255,0)');
+  spec.addColorStop(0.5, 'rgba(255,255,255,.6)');
+  spec.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = spec;
+  ctx.fillRect(0, 0, w, h);
+  const spec2 = ctx.createLinearGradient(g.cx + g.halfW * 0.55, 0, g.cx + g.halfW, 0);
+  spec2.addColorStop(0, 'rgba(255,255,255,0)');
+  spec2.addColorStop(1, 'rgba(255,255,255,.32)');
+  ctx.fillStyle = spec2;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
 
-  const yLevel = TOP_Y + CHAMBER_H * (1 - progress);
-  const y = TOP_Y + 6 + Math.random() * Math.max(2, yLevel - TOP_Y - 10);
-  const halfWAtY = TOP_HALF_W * ((TOP_BOT_Y - y) / CHAMBER_H);
-  const x = CX + (Math.random() - 0.5) * (halfWAtY * 1.6);
+  // Neck ring (small glass collar).
+  ctx.save();
+  ctx.strokeStyle = 'rgba(120,135,165,.55)';
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(g.cx - g.neckW, g.neck - g.neckW * 1.2, g.neckW * 2, g.neckW * 2.4);
+  ctx.restore();
 
-  state.sparkles.push({ x, y, age: 0, life: 700 + Math.random() * 600 });
-}
-
-function updateSparkles(state: AnimState, dt: number): void {
-  const dtMs = dt * 1000;
-  state.sparkles = state.sparkles.filter((s) => {
-    s.age += dtMs;
-    return s.age < s.life;
-  });
-}
-
-function drawSparkles(ctx: CanvasRenderingContext2D, sparkles: readonly Sparkle[]): void {
-  for (const s of sparkles) {
-    const t = s.age / s.life;
-    const alpha = Math.sin(t * Math.PI) * 0.85;
-    ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, 0.9 + Math.sin(t * Math.PI) * 0.6, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Wood caps.
+  drawWood(ctx, g, g.top);
+  drawWood(ctx, g, g.bot - g.capH);
 }
