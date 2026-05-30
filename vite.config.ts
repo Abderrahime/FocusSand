@@ -1,0 +1,32 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { crx } from '@crxjs/vite-plugin';
+import path from 'node:path';
+import manifest from './manifest.config';
+
+export default defineConfig({
+  plugins: [react(), crx({ manifest })],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
+  build: {
+    target: 'esnext',
+    sourcemap: true,
+    rollupOptions: {
+      input: {
+        detached: path.resolve(__dirname, 'detached.html'),
+        pip: path.resolve(__dirname, 'pip.html'),
+      },
+      output: {
+        chunkFileNames: 'assets/chunk-[hash].js',
+      },
+    },
+  },
+  server: {
+    port: 5173,
+    strictPort: true,
+    hmr: { port: 5173 },
+  },
+});
