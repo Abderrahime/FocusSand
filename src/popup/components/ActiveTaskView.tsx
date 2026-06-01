@@ -12,6 +12,7 @@ interface Props {
   elapsedSeconds: number;
   style: TimerStyle;
   sandPack: SandPack;
+  dark: boolean;
   onPause: () => void;
   onResume: () => void;
   onComplete: () => void;
@@ -24,6 +25,7 @@ export function ActiveTaskView({
   elapsedSeconds,
   style,
   sandPack,
+  dark,
   onPause,
   onResume,
   onComplete,
@@ -51,6 +53,7 @@ export function ActiveTaskView({
           estimatedSeconds={estimated}
           paused={timer.isPaused}
           sandPack={sandPack}
+          dark={dark}
         />
       ) : (
         <CircularTimer

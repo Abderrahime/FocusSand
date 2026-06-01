@@ -88,6 +88,29 @@ export function PipApp() {
     })();
   }, [isHost, pip]);
 
+  // Once the always-on-top PiP is live, tuck the host window away (minimize —
+  // not close, since it must stay alive to keep the PiP open). Restore it if
+  // the PiP gets dismissed so the timer is visible again.
+  useEffect(() => {
+    if (!isHost) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const self = await chrome.windows.getCurrent();
+        if (cancelled || self.id === undefined) return;
+        await chrome.windows.update(
+          self.id,
+          pip.pipWindow ? { state: 'minimized' } : { state: 'normal', focused: true },
+        );
+      } catch {
+        // Window API may be unavailable in some contexts — ignore.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isHost, pip.pipWindow]);
+
   const handlePause = async () => {
     void soundService.click();
     await timerService.pause();
@@ -149,14 +172,6 @@ export function PipApp() {
         <span className="pip-title" title={activeTask.title}>
           {activeTask.title}
         </span>
-        {isHost && pip.isSupported && (
-          <button
-            className={`icon-btn icon-btn--sm ${pip.pipWindow ? 'is-active' : ''}`}
-            onClick={handleTogglePip}
-            aria-label={pip.pipWindow ? 'Désactiver toujours au-dessus' : 'Activer toujours au-dessus'}
-            title={pip.pipWindow ? 'Désactiver toujours au-dessus' : 'Activer toujours au-dessus de toutes les apps'}
-          >📌</button>
-        )}
       </div>
 
       <div className="pip-timer">
@@ -175,6 +190,12 @@ export function PipApp() {
           />
         )}
       </div>
+
+      {isHost && pip.isSupported && !pip.pipWindow && (
+        <button className="btn btn--primary pip-pin-cta" onClick={handleTogglePip}>
+          📌 Épingler au-dessus de tout
+        </button>
+      )}
 
       <div className="pip-actions">
         {timer.isPaused ? (

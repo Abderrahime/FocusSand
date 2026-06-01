@@ -1,5 +1,5 @@
 import type { Task } from '@/models/task';
-import { totalEstimatedSeconds, STATUS_LABELS, CATEGORY_LABELS, PRIORITY_LABELS } from '@/models/task';
+import { totalEstimatedSeconds, STATUS_LABELS, categoryLabel, PRIORITY_LABELS } from '@/models/task';
 import { REASONS_BY_TYPE } from '@/models/reason';
 
 const HEADERS = [
@@ -40,7 +40,7 @@ function taskToRow(task: Task): string {
     new Date(task.createdAt).toISOString(),
     task.title,
     task.description ?? '',
-    CATEGORY_LABELS[task.category],
+    categoryLabel(task),
     PRIORITY_LABELS[task.priority],
     STATUS_LABELS[task.status],
     task.isBreak ? 'yes' : 'no',

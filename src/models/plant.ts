@@ -7,6 +7,8 @@ export interface Plant {
   emoji: string;
   size: PlantSize;
   category: TaskCategory;
+  /** Free-text category label when category is "other" (optional). */
+  customCategory?: string;
   /** Epoch ms when planted. */
   plantedAt: number;
   /** Title of the task that earned it. */

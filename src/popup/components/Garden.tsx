@@ -1,5 +1,6 @@
 import type { Plant } from '@/models/plant';
 import { CATEGORY_LABELS } from '@/models/task';
+import { CATEGORY_EMOJI } from '@/services/garden.service';
 
 interface Props {
   plants: Plant[];
@@ -21,9 +22,14 @@ export function Garden({ plants }: Props) {
     );
   }
 
-  // Plants by category for the summary strip.
-  const counts = plants.reduce<Record<string, number>>((acc, p) => {
-    acc[p.category] = (acc[p.category] || 0) + 1;
+  // Plants grouped by their displayed category label (custom labels included).
+  const groups = plants.reduce<Record<string, { emoji: string; count: number }>>((acc, p) => {
+    const label =
+      p.category === 'other' && p.customCategory?.trim()
+        ? p.customCategory.trim()
+        : CATEGORY_LABELS[p.category];
+    if (!acc[label]) acc[label] = { emoji: CATEGORY_EMOJI[p.category], count: 0 };
+    acc[label].count += 1;
     return acc;
   }, {});
 
@@ -51,12 +57,11 @@ export function Garden({ plants }: Props) {
       </div>
 
       <div className="garden__legend">
-        {Object.entries(counts).map(([category, count]) => (
-          <div key={category} className="garden__legend-item">
+        {Object.entries(groups).map(([label, { emoji, count }]) => (
+          <div key={label} className="garden__legend-item">
+            <span className="garden__legend-emoji" aria-hidden>{emoji}</span>
             <span className="garden__legend-count">{count}</span>
-            <span className="garden__legend-label">
-              {CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]}
-            </span>
+            <span className="garden__legend-label">{label}</span>
           </div>
         ))}
       </div>

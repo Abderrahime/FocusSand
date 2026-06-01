@@ -37,10 +37,10 @@ export function Dashboard({ stats, tasks }: Props) {
       <section className="breakdown">
         <h3 className="section-title">Répartition</h3>
         <ul className="breakdown__list">
-          <BreakdownRow label="✅ Terminées en avance" count={stats.byStatus.completed_early} />
+          <BreakdownRow label="⚡ Terminées en avance" count={stats.byStatus.completed_early} />
           <BreakdownRow label="🎯 Terminées à temps" count={stats.byStatus.completed_ontime} />
           <BreakdownRow label="🐢 Terminées en retard" count={stats.byStatus.completed_late} />
-          <BreakdownRow label="⏹ Abandonnées" count={stats.byStatus.abandoned} />
+          <BreakdownRow label="■ Abandonnées" count={stats.byStatus.abandoned} tone="danger" />
         </ul>
       </section>
 
@@ -77,10 +77,10 @@ function KPI({
   );
 }
 
-function BreakdownRow({ label, count }: { label: string; count: number }) {
+function BreakdownRow({ label, count, tone }: { label: string; count: number; tone?: 'danger' }) {
   return (
     <li className="breakdown__row">
-      <span>{label}</span>
+      <span style={tone === 'danger' ? { color: 'var(--danger-fg)' } : undefined}>{label}</span>
       <strong>{count}</strong>
     </li>
   );

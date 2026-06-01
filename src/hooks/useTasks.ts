@@ -10,6 +10,7 @@ export interface NewTaskInput {
   estimatedMinutes: number;
   priority: Task['priority'];
   category: Task['category'];
+  customCategory?: string;
   isBreak?: boolean;
 }
 
@@ -44,6 +45,7 @@ export function useTasks() {
       estimatedMinutes: input.estimatedMinutes,
       priority: input.priority,
       category: input.category,
+      customCategory: input.category === 'other' ? input.customCategory?.trim() || undefined : undefined,
       status: 'pending',
       createdAt: Date.now(),
       actualSeconds: 0,

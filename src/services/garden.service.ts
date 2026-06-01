@@ -10,8 +10,18 @@ import { uid } from '@/utils/id';
 const PLANT_EMOJI: Record<TaskCategory, Record<PlantSize, string>> = {
   work:     { small: '🌱', medium: '🌿', large: '🌳' },
   personal: { small: '🌷', medium: '🌹', large: '🌸' },
-  learning: { small: '🌾', medium: '🌻', large: '🍀' },
-  other:    { small: '🍃', medium: '🪴', large: '🌲' },
+  sport:    { small: '🌻', medium: '🌼', large: '🪴' },
+  learning: { small: '🍀', medium: '🌾', large: '🎋' },
+  other:    { small: '🍃', medium: '🌵', large: '🌲' },
+};
+
+/** Representative emoji per category for the garden legend (the small variant). */
+export const CATEGORY_EMOJI: Record<TaskCategory, string> = {
+  work: '🌱',
+  personal: '🌷',
+  sport: '🌻',
+  learning: '🍀',
+  other: '🍃',
 };
 
 function pickSize(estimatedMinutes: number): PlantSize {
@@ -35,6 +45,7 @@ export const gardenService = {
       emoji,
       size,
       category: task.category,
+      customCategory: task.category === 'other' ? task.customCategory?.trim() || undefined : undefined,
       plantedAt: Date.now(),
       taskTitle: task.title,
       x: 7 + Math.random() * 86,

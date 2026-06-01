@@ -17,6 +17,7 @@ export function TaskForm({ onSubmit }: Props) {
   const [estimatedMinutes, setEstimatedMinutes] = useState<number>(25);
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [category, setCategory] = useState<TaskCategory>('work');
+  const [customCategory, setCustomCategory] = useState('');
   const [expanded, setExpanded] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -28,12 +29,14 @@ export function TaskForm({ onSubmit }: Props) {
       estimatedMinutes,
       priority,
       category,
+      customCategory: category === 'other' ? customCategory.trim() || undefined : undefined,
     });
     setTitle('');
     setDescription('');
     setEstimatedMinutes(25);
     setPriority('medium');
     setCategory('work');
+    setCustomCategory('');
     setExpanded(false);
   };
 
@@ -98,6 +101,18 @@ export function TaskForm({ onSubmit }: Props) {
               </select>
             </label>
           </div>
+
+          {category === 'other' && (
+            <input
+              type="text"
+              className="task-form__input task-form__input--custom-category"
+              placeholder="Préciser la catégorie (optionnel)…"
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              maxLength={24}
+              aria-label="Catégorie personnalisée"
+            />
+          )}
         </>
       )}
 

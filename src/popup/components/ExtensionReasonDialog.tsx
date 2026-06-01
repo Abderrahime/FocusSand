@@ -16,9 +16,18 @@ export function ExtensionReasonDialog({ onConfirm, onCancel }: Props) {
 
   const canSubmit = reason !== null && minutes > 0;
 
+  // The whole card tints green/red depending on the chosen reason (brief #5).
+  const selectedCategory = reason ? REASONS_BY_TYPE[reason].category : null;
+  const tintClass =
+    selectedCategory === 'reasonable'
+      ? 'modal--ok'
+      : selectedCategory === 'unreasonable'
+        ? 'modal--bad'
+        : '';
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal modal--wide">
+      <div className={`modal modal--wide ${tintClass}`}>
         <h2 className="modal__title">Ajouter du temps</h2>
 
         <label className="form-label">

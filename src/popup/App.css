@@ -680,6 +680,20 @@
   gap: 6px;
 }
 
+/* Prominent call-to-action in the host window: one obvious click to pin the
+   timer above all apps (shown until the always-on-top PiP is active). */
+.pip-pin-cta {
+  width: 100%;
+  margin-top: 2px;
+  gap: 6px;
+  animation: pip-cta-pulse 2s ease-in-out infinite;
+}
+
+@keyframes pip-cta-pulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+  50%      { box-shadow: 0 5px 18px rgba(99, 102, 241, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.28); }
+}
+
 .pip-empty {
   display: flex;
   flex-direction: column;
@@ -1357,9 +1371,10 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
-.app-header__logo svg {
-  width: 44px;
-  height: 44px;
+/* Logo holds a live mini V3 hourglass canvas (matches Claude Design). */
+.app-header__logo canvas {
+  width: 30px;
+  height: 38px;
   display: block;
 }
 
@@ -1441,6 +1456,16 @@
 }
 
 .icon-btn.is-active {
+  background: var(--brand-tint);
+  color: var(--brand-500);
+}
+
+/* The pin / float button is tinted so it stands out from the plain icons. */
+.icon-btn--accent {
+  color: var(--brand-500);
+}
+
+.icon-btn--accent:hover {
   background: var(--brand-tint);
   color: var(--brand-500);
 }
@@ -1589,6 +1614,16 @@
   border-radius: 10px;
   background: var(--surface-2);
   resize: none;
+}
+
+.task-form__input--custom-category {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: 13.5px;
 }
 
 .task-form__row--select {
@@ -2142,6 +2177,11 @@
   font-weight: 780;
 }
 
+.garden__legend-emoji {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .garden__empty {
   padding: 40px 20px;
 }
@@ -2162,6 +2202,15 @@
 
 .modal--wide {
   max-width: 360px;
+}
+
+/* Reason picker tints the whole card green (reasonable) or red (to avoid). */
+.modal--ok {
+  box-shadow: var(--shadow-pop), inset 0 0 0 1.5px var(--color-success);
+}
+
+.modal--bad {
+  box-shadow: var(--shadow-pop), inset 0 0 0 1.5px var(--color-danger);
 }
 
 .modal__icon {

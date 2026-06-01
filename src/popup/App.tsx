@@ -39,7 +39,7 @@ export default function App({ mode }: AppProps) {
   const { tasks, loading, addTask, updateTask, deleteTask } = useTasks();
   const { state: timer, elapsedSeconds } = useActiveTimer();
   const { settings, save: saveSettings } = useSettings();
-  useTheme(settings.theme);
+  const resolvedTheme = useTheme(settings.theme);
   const streak = useStreak();
   const plants = useGarden();
   const stats = useTodayStats(tasks);
@@ -184,12 +184,12 @@ export default function App({ mode }: AppProps) {
       return;
     }
 
-    // Chrome's documentPictureInPicture API requires a persistent opener
-    // which the extension popup isn't (it dies on focus loss, closing the
-    // PiP with it — silently, no error). From the popup we always hand
-    // off to a small Chrome window that acts as the persistent host. That
-    // window's first frame attempts to upgrade itself to a true PiP, so
-    // the user gets one-click access to "always-on-top" mode.
+    // A true always-on-top window requires the Document PiP API, which needs
+    // a persistent opener. The toolbar popup is destroyed when it loses focus,
+    // so it cannot host the PiP itself. We therefore hand off to a small host
+    // window, which immediately tries to upgrade itself to an always-on-top
+    // PiP on load — and tucks itself away (minimizes) once it succeeds, so the
+    // user is left with just the floating window on top.
     if (mode === 'popup') {
       try {
         await chrome.storage.local.set({
@@ -201,6 +201,7 @@ export default function App({ mode }: AppProps) {
       }
       return;
     }
+
     await pip.open();
   };
 
@@ -214,6 +215,8 @@ export default function App({ mode }: AppProps) {
         onChangeTab={setTab}
         streak={streak}
         mode={mode}
+        sandPack={settings.sandPack}
+        isRunning={isRunning}
         pipActive={pip.pipWindow !== null}
         pipSupported={pip.isSupported}
         onOpenSettings={() => setShowSettings(true)}
@@ -233,6 +236,7 @@ export default function App({ mode }: AppProps) {
                 elapsedSeconds={elapsedSeconds}
                 style={settings.timerStyle}
                 sandPack={settings.sandPack}
+                dark={resolvedTheme === 'dark'}
                 onPause={handlePause}
                 onResume={handleResume}
                 onComplete={handleComplete}

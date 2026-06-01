@@ -19,6 +19,7 @@ export function EditTaskDialog({ task, onSave, onCancel }: Props) {
   const [estimatedMinutes, setEstimatedMinutes] = useState(task.estimatedMinutes);
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
   const [category, setCategory] = useState<TaskCategory>(task.category);
+  const [customCategory, setCustomCategory] = useState(task.customCategory ?? '');
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -30,6 +31,7 @@ export function EditTaskDialog({ task, onSave, onCancel }: Props) {
       estimatedMinutes,
       priority,
       category,
+      customCategory: category === 'other' ? customCategory.trim() || undefined : undefined,
     });
   };
 
@@ -96,6 +98,19 @@ export function EditTaskDialog({ task, onSave, onCancel }: Props) {
             </select>
           </label>
         </div>
+
+        {category === 'other' && (
+          <label className="form-label">
+            Catégorie personnalisée (optionnel)
+            <input
+              className="form-input"
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              placeholder="Ex. Cuisine, Yoga…"
+              maxLength={24}
+            />
+          </label>
+        )}
 
         <div className="modal__actions">
           <button type="button" className="btn btn--ghost" onClick={onCancel}>Annuler</button>

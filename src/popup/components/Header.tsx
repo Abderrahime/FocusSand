@@ -1,5 +1,7 @@
 import type { Streak } from '@/models/streak';
+import type { SandPack } from '@/models/settings';
 import type { ViewMode } from '@/popup/view-mode';
+import { HourglassCanvas } from './Hourglass';
 
 type Tab = 'today' | 'stats' | 'garden';
 
@@ -8,6 +10,8 @@ interface Props {
   onChangeTab: (tab: Tab) => void;
   streak: Streak;
   mode: ViewMode;
+  sandPack: SandPack;
+  isRunning: boolean;
   pipActive: boolean;
   pipSupported: boolean;
   onOpenSettings: () => void;
@@ -20,6 +24,8 @@ export function Header({
   onChangeTab,
   streak,
   mode,
+  sandPack,
+  isRunning,
   pipActive,
   pipSupported,
   onOpenSettings,
@@ -30,7 +36,15 @@ export function Header({
     <header className="app-header">
       <div className="app-header__brand">
         <div className="app-header__logo" aria-hidden>
-          <HourglassMark />
+          <HourglassCanvas
+            progress={0.4}
+            remaining={0.6}
+            running={isRunning}
+            pack={sandPack}
+            dark
+            width={30}
+            height={38}
+          />
         </div>
         <div className="app-header__text">
           <h1 className="app-header__title">FocusSand</h1>
@@ -46,22 +60,23 @@ export function Header({
             </span>
           )}
 
-          {pipSupported && (
-            <button
-              className={`icon-btn ${pipActive ? 'is-active' : ''}`}
-              onClick={onTogglePip}
-              aria-label={pipActive ? 'Fermer la mini-fenêtre' : 'Épingler en mini-fenêtre toujours au-dessus'}
-              title={
-                pipActive
-                  ? 'Fermer la mini-fenêtre'
-                  : mode === 'popup'
-                    ? 'Ouvrir la mini-fenêtre flottante'
-                    : 'Épingler en mini-fenêtre toujours au-dessus'
-              }
-            >
-              <PinIcon />
-            </button>
-          )}
+          {/* Always shown: even when the Document PiP API is unavailable, the
+              handler falls back to a floating host window, so the pin is
+              always useful. */}
+          <button
+            className={`icon-btn icon-btn--accent ${pipActive ? 'is-active' : ''}`}
+            onClick={onTogglePip}
+            aria-label={pipActive ? 'Fermer la fenêtre flottante' : 'Épingler en fenêtre flottante toujours au-dessus'}
+            title={
+              pipActive
+                ? 'Fermer la fenêtre flottante'
+                : pipSupported
+                  ? 'Épingler en fenêtre flottante (toujours au-dessus)'
+                  : 'Ouvrir la mini-fenêtre flottante'
+            }
+          >
+            <PinIcon />
+          </button>
 
           {mode === 'popup' && (
             <button
@@ -111,33 +126,6 @@ export function Header({
         </button>
       </nav>
     </header>
-  );
-}
-
-function HourglassMark() {
-  return (
-    <svg viewBox="0 0 44 44" role="img" aria-label="FocusSand">
-      <rect width="44" height="44" rx="12" fill="url(#focusSandLogoGradient)" />
-      <path
-        d="M14 11h16M14 33h16M17 11l5 7 5-7M17 33l5-7 5 7"
-        fill="none"
-        stroke="rgba(255,255,255,.94)"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.2"
-      />
-      <path
-        d="M18.4 18.2h7.2L22 22l-3.6-3.8ZM18.4 25.8h7.2L22 22l-3.6 3.8Z"
-        fill="rgba(252,211,77,.94)"
-      />
-      <circle cx="22" cy="22" r="1.45" fill="#fff7d6" />
-      <defs>
-        <linearGradient id="focusSandLogoGradient" x1="6" y1="4" x2="38" y2="40" gradientUnits="userSpaceOnUse">
-          <stop stopColor="var(--brand-500)" />
-          <stop offset="1" stopColor="var(--violet-500)" />
-        </linearGradient>
-      </defs>
-    </svg>
   );
 }
 

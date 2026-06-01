@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { formatDuration } from '@/utils/time';
 import type { SandPack } from '@/models/settings';
 
@@ -7,6 +7,12 @@ interface Props {
   estimatedSeconds: number;
   paused?: boolean;
   sandPack?: SandPack;
+  /**
+   * Render the glass for a dark surface (subtler body, darker wood, dimmer
+   * specular). When omitted, the renderer reads `data-theme` from the
+   * document each frame, so it tracks the live theme automatically.
+   */
+  dark?: boolean;
 }
 
 /**
@@ -51,6 +57,8 @@ interface PropsSnapshot {
   remaining: number;
   running: boolean;
   pack: SandPack;
+  /** Explicit theme override; when undefined the renderer reads the DOM. */
+  dark?: boolean;
 }
 
 interface Pack {
@@ -60,6 +68,8 @@ interface Pack {
   glow: string;
   shiftable?: boolean;
   emissive?: boolean;
+  /** Glowing ancient runes float in the chambers (night "wow" variant). */
+  runes?: boolean;
 }
 
 const PACKS: Record<SandPack, Pack> = {
@@ -67,8 +77,12 @@ const PACKS: Record<SandPack, Pack> = {
   lava:    { hi: '#ff8a3d', lo: '#d62828', grain: '#ff6b35', glow: 'rgba(255,90,40,.55)',  emissive: true },
   glacier: { hi: '#dff1fb', lo: '#9bc7e6', grain: '#c4e4f5', glow: 'rgba(150,200,235,.5)' },
   emerald: { hi: '#6ee7b7', lo: '#0f9d6b', grain: '#34d399', glow: 'rgba(52,211,153,.5)' },
-  gold:    { hi: '#ffe9a8', lo: '#cda03a', grain: '#ecc758', glow: 'rgba(230,196,80,.55)', emissive: true, shiftable: true },
+  gold:    { hi: '#ffe9a8', lo: '#cda03a', grain: '#ecc758', glow: 'rgba(230,196,80,.55)', emissive: true },
+  rune:    { hi: '#c3ccff', lo: '#6b74d6', grain: '#aab4ff', glow: 'rgba(130,140,255,.6)', runes: true, emissive: true },
 };
+
+// Ancient runes drawn in the rune pack chambers.
+const RUNES = ['ᚠ', 'ᚱ', 'ᛟ', 'ᚦ', 'ᛉ', 'ᛞ', 'ᚷ', 'ᛊ'];
 
 // Re-exported for the SettingsDialog sand-pack picker.
 export const SAND_PACK_LABELS: Record<SandPack, { label: string; sample: string }> = {
@@ -77,6 +91,7 @@ export const SAND_PACK_LABELS: Record<SandPack, { label: string; sample: string 
   glacier: { label: 'Glacier',   sample: PACKS.glacier.grain },
   emerald: { label: 'Émeraude',  sample: PACKS.emerald.grain },
   gold:    { label: 'Or',        sample: PACKS.gold.grain },
+  rune:    { label: 'Rune',      sample: PACKS.rune.grain },
 };
 
 const CANVAS_W = 188;
@@ -95,7 +110,28 @@ function mixHex(h1: string, h2: string, t: number): string {
   return `rgb(${Math.round(lerp(a[0], b[0], t))},${Math.round(lerp(a[1], b[1], t))},${Math.round(lerp(a[2], b[2], t))})`;
 }
 
-export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sandPack = 'classic' }: Props) {
+interface CanvasProps {
+  /** Fraction of sand already fallen (0..1). */
+  progress: number;
+  /** Fraction of time remaining (0..1) — drives the amber→red shift. */
+  remaining: number;
+  /** When true, grains fall and sparkles twinkle. */
+  running: boolean;
+  pack: SandPack;
+  /** Explicit theme; falls back to the live document theme when omitted. */
+  dark?: boolean;
+  /** CSS pixel size of the canvas. */
+  width: number;
+  height: number;
+  className?: string;
+}
+
+/**
+ * Low-level canvas renderer for the V3 hourglass. Drives the animation loop
+ * directly from props, with no readout chrome — reused both as the hero timer
+ * (188×204) and as the tiny header logo mark (30×38), matching Claude Design.
+ */
+export function HourglassCanvas({ progress, remaining, running, pack, dark, width, height, className }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const grainsRef = useRef<Grain[]>([]);
@@ -104,43 +140,22 @@ export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sa
   const spawnAccRef = useRef<number>(0);
   const lastFrameRef = useRef<number>(performance.now());
   const shakeUntilRef = useRef<number>(0);
-  const propsRef = useRef<PropsSnapshot>({
-    progress: 0,
-    remaining: 1,
-    running: !paused,
-    pack: sandPack,
-  });
-
-  const [isShaking, setIsShaking] = useState(false);
+  const propsRef = useRef<PropsSnapshot>({ progress, remaining, running, pack, dark });
 
   // Sync prop snapshot every render.
   useEffect(() => {
-    const safeEst = Math.max(1, estimatedSeconds);
-    const rawProgress = elapsedSeconds / safeEst;
-    propsRef.current = {
-      progress: Math.max(0, Math.min(1, rawProgress)),
-      remaining: Math.max(0, Math.min(1, 1 - rawProgress)),
-      running: !paused,
-      pack: sandPack,
-    };
-  }, [elapsedSeconds, estimatedSeconds, paused, sandPack]);
+    propsRef.current = { progress, remaining, running, pack, dark };
+  }, [progress, remaining, running, pack, dark]);
 
-  // Sound-reactive shake — same hook as before.
+  // Sound-reactive shake: a 260 ms tremor on each non-click sound event.
   useEffect(() => {
-    let timeoutId: number | undefined;
     const handler = (e: Event) => {
       const ce = e as CustomEvent<{ name: string }>;
       if (!ce.detail || ce.detail.name === 'click') return;
       shakeUntilRef.current = performance.now() + 260;
-      setIsShaking(true);
-      window.clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(() => setIsShaking(false), 260);
     };
     window.addEventListener('focusand:sound', handler);
-    return () => {
-      window.removeEventListener('focusand:sound', handler);
-      window.clearTimeout(timeoutId);
-    };
+    return () => window.removeEventListener('focusand:sound', handler);
   }, []);
 
   useEffect(() => {
@@ -181,7 +196,6 @@ export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sa
       const { w, h } = sizeCanvas();
       ctx.clearRect(0, 0, w, h);
 
-      // Apply shake offset (synced with React state via shakeUntilRef).
       let sx = 0;
       let sy = 0;
       if (now < shakeUntilRef.current) {
@@ -189,9 +203,12 @@ export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sa
         sx = Math.sin(now / 16) * 3 * k;
         sy = Math.cos(now / 13) * 2 * k;
       }
+      // Explicit prop wins; otherwise track the live document theme.
+      const isDark = propsRef.current.dark ?? document.documentElement.dataset.theme === 'dark';
+
       ctx.save();
       ctx.translate(sx, sy);
-      renderGlass(ctx, w, h, propsRef.current, now, dt, grainsRef.current, splashesRef.current, sparklesRef.current, spawnAccRef);
+      renderGlass(ctx, w, h, propsRef.current, now, dt, grainsRef.current, splashesRef.current, sparklesRef.current, spawnAccRef, isDark);
       ctx.restore();
 
       rafRef.current = requestAnimationFrame(loop);
@@ -201,25 +218,36 @@ export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sa
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
+  return (
+    <canvas ref={canvasRef} className={className} style={{ width, height }} aria-hidden />
+  );
+}
+
+export function Hourglass({ elapsedSeconds, estimatedSeconds, paused = false, sandPack = 'classic', dark }: Props) {
   const safeEstimated = Math.max(1, estimatedSeconds);
   const rawProgress = elapsedSeconds / safeEstimated;
   const overrun = rawProgress > 1;
-  const remainingRatio = 1 - Math.min(1, rawProgress);
+  const progress = Math.max(0, Math.min(1, rawProgress));
+  const remaining = Math.max(0, Math.min(1, 1 - rawProgress));
   const tone: 'amber' | 'orange' | 'red' = overrun
     ? 'red'
-    : remainingRatio <= 0.25
+    : remaining <= 0.25
       ? 'orange'
       : 'amber';
   const remainingDisplay = overrun ? -(elapsedSeconds - safeEstimated) : safeEstimated - elapsedSeconds;
   const percent = Math.round(rawProgress * 100);
 
   return (
-    <div className={`hourglass tone-${tone} ${paused ? 'is-paused' : ''} ${overrun ? 'is-overrun' : ''} ${isShaking ? 'is-shaking' : ''}`}>
-      <canvas
-        ref={canvasRef}
+    <div className={`hourglass tone-${tone} ${paused ? 'is-paused' : ''} ${overrun ? 'is-overrun' : ''}`}>
+      <HourglassCanvas
         className="hourglass__canvas"
-        style={{ width: `${CANVAS_W}px`, height: `${CANVAS_H}px` }}
-        aria-hidden
+        progress={progress}
+        remaining={remaining}
+        running={!paused}
+        pack={sandPack}
+        dark={dark}
+        width={CANVAS_W}
+        height={CANVAS_H}
       />
       <div className="hourglass__readout">
         <div className="hourglass__time">{formatDuration(remainingDisplay)}</div>
@@ -289,14 +317,20 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-function drawWood(ctx: CanvasRenderingContext2D, g: Geometry, y: number): void {
+function drawWood(ctx: CanvasRenderingContext2D, g: Geometry, y: number, dark: boolean): void {
   const x = g.cx - g.halfW - g.padX * 0.35;
   const ww = (g.halfW + g.padX * 0.35) * 2;
   const r = g.capH * 0.5;
   const grad = ctx.createLinearGradient(0, y, 0, y + g.capH);
-  grad.addColorStop(0, '#a9824f');
-  grad.addColorStop(0.45, '#8a6437');
-  grad.addColorStop(1, '#6e4f2c');
+  if (dark) {
+    grad.addColorStop(0, '#6b5536');
+    grad.addColorStop(0.5, '#4f3f28');
+    grad.addColorStop(1, '#372c1c');
+  } else {
+    grad.addColorStop(0, '#a9824f');
+    grad.addColorStop(0.45, '#8a6437');
+    grad.addColorStop(1, '#6e4f2c');
+  }
   ctx.fillStyle = grad;
   roundRect(ctx, x, y, ww, g.capH, r);
   ctx.fill();
@@ -316,6 +350,7 @@ function renderGlass(
   splashes: Splash[],
   sparkles: Sparkle[],
   spawnAccRef: { current: number },
+  dark: boolean,
 ): void {
   const g = geo(w, h);
   const basePack = PACKS[s.pack] ?? PACKS.classic;
@@ -352,9 +387,15 @@ function renderGlass(
 
   // Glass body (translucent fill).
   const bodyGrad = ctx.createLinearGradient(g.cx - g.halfW, 0, g.cx + g.halfW, 0);
-  bodyGrad.addColorStop(0, 'rgba(255,255,255,.55)');
-  bodyGrad.addColorStop(0.45, 'rgba(214,224,238,.18)');
-  bodyGrad.addColorStop(1, 'rgba(150,165,190,.22)');
+  if (dark) {
+    bodyGrad.addColorStop(0, 'rgba(255,255,255,.10)');
+    bodyGrad.addColorStop(0.5, 'rgba(255,255,255,.02)');
+    bodyGrad.addColorStop(1, 'rgba(255,255,255,.06)');
+  } else {
+    bodyGrad.addColorStop(0, 'rgba(255,255,255,.55)');
+    bodyGrad.addColorStop(0.45, 'rgba(214,224,238,.18)');
+    bodyGrad.addColorStop(1, 'rgba(150,165,190,.22)');
+  }
   ctx.save();
   chamberPath(ctx, g, -1);
   chamberPath(ctx, g, 1);
@@ -485,31 +526,51 @@ function renderGlass(
   chamberPath(ctx, g, -1);
   chamberPath(ctx, g, 1);
   ctx.lineWidth = 1.4;
-  ctx.strokeStyle = 'rgba(120,135,165,.5)';
+  ctx.strokeStyle = dark ? 'rgba(160,170,205,.45)' : 'rgba(120,135,165,.5)';
   ctx.stroke();
   ctx.clip();
   const shift = Math.sin(now / 2600) * w * 0.02;
   const spec = ctx.createLinearGradient(g.cx - g.halfW * 0.7 + shift, 0, g.cx - g.halfW * 0.3 + shift, 0);
   spec.addColorStop(0, 'rgba(255,255,255,0)');
-  spec.addColorStop(0.5, 'rgba(255,255,255,.6)');
+  spec.addColorStop(0.5, dark ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.6)');
   spec.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = spec;
   ctx.fillRect(0, 0, w, h);
   const spec2 = ctx.createLinearGradient(g.cx + g.halfW * 0.55, 0, g.cx + g.halfW, 0);
   spec2.addColorStop(0, 'rgba(255,255,255,0)');
-  spec2.addColorStop(1, 'rgba(255,255,255,.32)');
+  spec2.addColorStop(1, dark ? 'rgba(255,255,255,.10)' : 'rgba(255,255,255,.32)');
   ctx.fillStyle = spec2;
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 
   // Neck ring (small glass collar).
   ctx.save();
-  ctx.strokeStyle = 'rgba(120,135,165,.55)';
+  ctx.strokeStyle = dark ? 'rgba(170,180,215,.5)' : 'rgba(120,135,165,.55)';
   ctx.lineWidth = 1.4;
   ctx.strokeRect(g.cx - g.neckW, g.neck - g.neckW * 1.2, g.neckW * 2, g.neckW * 2.4);
   ctx.restore();
 
+  // Glowing ancient runes (rune pack only — night "wow" variant).
+  if (basePack.runes) {
+    ctx.save();
+    ctx.font = `${Math.round(w * 0.05)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = basePack.glow;
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = 'rgba(180,190,255,.92)';
+    const pulse = 0.6 + 0.4 * Math.sin(now / 600);
+    ctx.globalAlpha = 0.55 + pulse * 0.45;
+    const yTopC = lerp(g.top + g.capH, g.neck, 0.42);
+    const yBotC = lerp(g.neck, g.bot - g.capH, 0.58);
+    ctx.fillText(RUNES[0], g.cx - g.halfW * 0.55, yTopC);
+    ctx.fillText(RUNES[3], g.cx + g.halfW * 0.55, yTopC);
+    ctx.fillText(RUNES[5], g.cx - g.halfW * 0.55, yBotC);
+    ctx.fillText(RUNES[6], g.cx + g.halfW * 0.55, yBotC);
+    ctx.restore();
+  }
+
   // Wood caps.
-  drawWood(ctx, g, g.top);
-  drawWood(ctx, g, g.bot - g.capH);
+  drawWood(ctx, g, g.top, dark);
+  drawWood(ctx, g, g.bot - g.capH, dark);
 }

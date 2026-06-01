@@ -2,7 +2,7 @@ import type { Ambiance, AmbientSound } from './ambiance';
 
 export type TimerStyle = 'hourglass' | 'circle';
 
-export type SandPack = 'classic' | 'lava' | 'glacier' | 'emerald' | 'gold';
+export type SandPack = 'classic' | 'lava' | 'glacier' | 'emerald' | 'gold' | 'rune';
 
 export type ThemeChoice = 'light' | 'dark' | 'auto';
 
@@ -27,14 +27,6 @@ export interface Settings {
   pomodoroBreaks: boolean;
   shortBreakMinutes: number;
   longBreakMinutes: number;
-
-  /**
-   * When true, pinning from the popup goes through the mini-window host so
-   * the PiP survives the popup closing. When false (default), pinning opens
-   * the PiP directly from the popup — simpler but the PiP closes if the
-   * popup loses focus.
-   */
-  pipViaMiniWindow: boolean;
 
   /** Master sound switch. */
   soundEnabled: boolean;
@@ -68,7 +60,6 @@ export const DEFAULT_SETTINGS: Settings = {
   pomodoroBreaks: true,
   shortBreakMinutes: 5,
   longBreakMinutes: 15,
-  pipViaMiniWindow: false,
   soundEnabled: true,
   soundVolume: 0.4,
   quietHoursStart: 22,

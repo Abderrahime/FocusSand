@@ -1,7 +1,8 @@
 import {
-  CATEGORY_LABELS,
   PRIORITY_LABELS,
   STATUS_LABELS,
+  STATUS_ICONS,
+  categoryLabel,
   isTerminal,
   type Task,
 } from '@/models/task';
@@ -42,9 +43,10 @@ export function TaskItem({ task, hasActiveTimer, onStart, onEdit, onDelete }: Pr
         {task.description && <p className="task-item__desc">{task.description}</p>}
         <div className="task-item__meta">
           <span className="meta-chip"><ClockIcon /> {task.estimatedMinutes} min</span>
-          <span className="meta-chip">{CATEGORY_LABELS[task.category]}</span>
+          <span className="meta-chip">{categoryLabel(task)}</span>
           {terminal && (
             <span className={`meta-chip meta-chip--status status-${task.status} status-tone-${statusTone}`}>
+              {STATUS_ICONS[task.status] ? `${STATUS_ICONS[task.status]} ` : ''}
               {STATUS_LABELS[task.status]} · {formatDurationShort(task.actualSeconds)}
             </span>
           )}

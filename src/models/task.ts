@@ -2,7 +2,7 @@ import type { TimeExtension } from './reason';
 
 export type TaskPriority = 'low' | 'medium' | 'high';
 
-export type TaskCategory = 'work' | 'personal' | 'learning' | 'other';
+export type TaskCategory = 'work' | 'personal' | 'sport' | 'learning' | 'other';
 
 export type TaskStatus =
   | 'pending'
@@ -20,6 +20,8 @@ export interface Task {
   estimatedMinutes: number;
   priority: TaskPriority;
   category: TaskCategory;
+  /** Free-text label used when category is "other" (optional). */
+  customCategory?: string;
   status: TaskStatus;
   createdAt: number;
   startedAt?: number;
@@ -39,10 +41,29 @@ export const PRIORITY_LABELS: Record<TaskPriority, string> = {
 
 export const CATEGORY_LABELS: Record<TaskCategory, string> = {
   work: 'Travail',
-  personal: 'Personnel',
-  learning: 'Apprentissage',
+  personal: 'Perso',
+  sport: 'Sport',
+  learning: 'Études',
   other: 'Autre',
 };
+
+/** Emoji used by the displayed status chips & breakdown (matches Claude Design). */
+export const STATUS_ICONS: Partial<Record<TaskStatus, string>> = {
+  completed_early: '⚡',
+  completed_ontime: '🎯',
+  completed_late: '🐢',
+};
+
+/**
+ * Display label for a task's category: the free-text value when the category
+ * is "other" and one was provided, otherwise the standard label.
+ */
+export function categoryLabel(task: Pick<Task, 'category' | 'customCategory'>): string {
+  if (task.category === 'other' && task.customCategory?.trim()) {
+    return task.customCategory.trim();
+  }
+  return CATEGORY_LABELS[task.category];
+}
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   pending: 'À faire',
