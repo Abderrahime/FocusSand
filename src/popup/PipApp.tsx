@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTasks } from '@/hooks/useTasks';
 import { useActiveTimer } from '@/hooks/useActiveTimer';
 import { useSettings } from '@/hooks/useSettings';
@@ -88,24 +88,48 @@ export function PipApp() {
     })();
   }, [isHost, pip]);
 
-  // Once the always-on-top PiP is live, tuck the host window away (minimize —
-  // not close, since it must stay alive to keep the PiP open). Restore it if
-  // the PiP gets dismissed so the timer is visible again.
+  // Host-window lifecycle while the always-on-top PiP is up: tuck the host
+  // away so only the floating PiP shows, and keep it tucked even if it grabs
+  // focus again; once the PiP is dismissed, close the host (its job is done).
+  const hadPipRef = useRef(false);
   useEffect(() => {
     if (!isHost) return;
+    if (!pip.pipWindow && !hadPipRef.current) return; // idle, nothing to do
     let cancelled = false;
-    void (async () => {
+
+    const minimizeSelf = async () => {
       try {
         const self = await chrome.windows.getCurrent();
-        if (cancelled || self.id === undefined) return;
-        await chrome.windows.update(
-          self.id,
-          pip.pipWindow ? { state: 'minimized' } : { state: 'normal', focused: true },
-        );
+        if (!cancelled && self.id !== undefined) {
+          await chrome.windows.update(self.id, { state: 'minimized' });
+        }
       } catch {
-        // Window API may be unavailable in some contexts — ignore.
+        /* ignore */
       }
-    })();
+    };
+    const closeSelf = async () => {
+      try {
+        const self = await chrome.windows.getCurrent();
+        if (!cancelled && self.id !== undefined) await chrome.windows.remove(self.id);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    if (pip.pipWindow) {
+      hadPipRef.current = true;
+      const t = window.setTimeout(() => void minimizeSelf(), 200);
+      // Re-tuck if the host steals focus back (e.g. user clicks the PiP).
+      const onFocus = () => void minimizeSelf();
+      window.addEventListener('focus', onFocus);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(t);
+        window.removeEventListener('focus', onFocus);
+      };
+    }
+
+    void closeSelf();
     return () => {
       cancelled = true;
     };
@@ -172,6 +196,14 @@ export function PipApp() {
         <span className="pip-title" title={activeTask.title}>
           {activeTask.title}
         </span>
+        {isHost && pip.isSupported && (
+          <button
+            className={`icon-btn icon-btn--sm ${pip.pipWindow ? 'is-active' : ''}`}
+            onClick={handleTogglePip}
+            aria-label={pip.pipWindow ? 'Désactiver toujours au-dessus' : 'Activer toujours au-dessus'}
+            title={pip.pipWindow ? 'Désactiver toujours au-dessus' : 'Épingler au-dessus de toutes les apps (ouvre une fenêtre flottante dédiée)'}
+          >📌</button>
+        )}
       </div>
 
       <div className="pip-timer">
@@ -190,12 +222,6 @@ export function PipApp() {
           />
         )}
       </div>
-
-      {isHost && pip.isSupported && !pip.pipWindow && (
-        <button className="btn btn--primary pip-pin-cta" onClick={handleTogglePip}>
-          📌 Épingler au-dessus de tout
-        </button>
-      )}
 
       <div className="pip-actions">
         {timer.isPaused ? (

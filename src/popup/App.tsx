@@ -184,12 +184,12 @@ export default function App({ mode }: AppProps) {
       return;
     }
 
-    // A true always-on-top window requires the Document PiP API, which needs
-    // a persistent opener. The toolbar popup is destroyed when it loses focus,
-    // so it cannot host the PiP itself. We therefore hand off to a small host
-    // window, which immediately tries to upgrade itself to an always-on-top
-    // PiP on load — and tucks itself away (minimizes) once it succeeds, so the
-    // user is left with just the floating window on top.
+    // Open the host window and flag it to immediately auto-pin: it upgrades
+    // itself to the always-on-top floating window (the "3rd window") on load,
+    // then minimizes itself so the user is left with just that floating
+    // window. The host can only briefly flash (Chrome needs it visible to get
+    // the user activation that Picture-in-Picture requires); after that it
+    // tucks away on its own.
     if (mode === 'popup') {
       try {
         await chrome.storage.local.set({

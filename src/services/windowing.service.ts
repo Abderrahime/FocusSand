@@ -34,8 +34,8 @@ export async function openMiniWindow(): Promise<void> {
   await chrome.windows.create({
     url: MINI_URL,
     type: 'popup',
-    width: 300,
-    height: 440,
+    width: 320,
+    height: 460,
     focused: true,
   });
 }
