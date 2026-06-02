@@ -8,3 +8,5 @@ manifest.config.js
 manifest.config.d.ts
 vite.config.js
 vite.config.d.ts
+focussand-v*.zip
+store/out/

@@ -1,6 +1,6 @@
 {
   "name": "focusand",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Chrome extension to manage daily tasks with a beautiful visual timer.",
   "type": "module",
